@@ -1,0 +1,14 @@
+std_msgs/Header header
+string label
+uint32 id
+geometry_msgs/Point center
+float32 x
+float32 y
+int32 width
+int32 height
+float32 average_depth
+time last_time
+bool no_observation
+bool depth_change
+bool occ_objects
+bool is_target

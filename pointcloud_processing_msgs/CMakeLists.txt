@@ -16,6 +16,8 @@ find_package(catkin REQUIRED
 add_message_files(
   FILES
     handle_position.msg
+    ObjectInfo.msg
+    ObjectInfoArray.msg
 #    BoundingBoxes.msg
 )
 

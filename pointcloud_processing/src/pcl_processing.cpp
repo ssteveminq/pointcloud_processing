@@ -8,6 +8,9 @@
 #include <geometry_msgs/Vector3Stamped.h>
 #include <visualization_msgs/Marker.h>
 #include <pointcloud_processing_msgs/handle_position.h>
+#include <pointcloud_processing_msgs/ObjectInfo.h>
+#include <pointcloud_processing_msgs/ObjectInfoArray.h>
+#include <pointcloud_processing_msgs/handle_position.h>
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_listener.h>
 #include <math.h> 
@@ -37,21 +40,23 @@ using namespace message_filters;
 
 const float SURVIVAL_TIME = 60.0;
 const float TEMP_OCC_TIME = 2.0;
-const int QUEUE_SIZE = 30;
+const float OVERLAP_THRESHOLD=0.65;
+const int QUEUE_SIZE = 40;
 
-struct ObjInfo{
-    float x;
-    float y;
-    int width;
-    int height;
-    std::string label;
-    geometry_msgs::PointStamped center;
-    ros::Time last_time;
-    float average_depth;
-    bool no_observation;
-};
-
-
+//struct ObjInfo{
+    //float x;
+    //float y;
+    //int width;
+    //int height;
+    //std::string label;
+    //geometry_msgs::Point center;
+    //ros::Time last_time;
+    //float average_depth;
+    //bool no_observation;
+    //bool depth_change;
+    //bool occ_objects;
+    //bool is_target;
+//};
 
 // Initialize publishers
 ros::Publisher pub_bottle;
@@ -60,7 +65,8 @@ ros::Publisher pub_bottle_poses;
 ros::Publisher pub_cup;
 ros::Publisher pub_cup_centroid;
 ros::Publisher pub_cup_poses;
-ros::Publisher pub_handle_centroid_list;
+ros::Publisher pub_bottle_list;
+ros::Publisher pub_ObjectInfos;
 
 // Initialize transform listener
 tf::TransformListener* lst;
@@ -69,7 +75,7 @@ tf::TransformListener* lst;
 std::string fixed_frame = "map";
 
 //map
-std::map<std::string, ObjInfo> labels_to_obj;
+std::map<std::string, pointcloud_processing_msgs::ObjectInfo> labels_to_obj;
 std::vector<std::string> target_string;
 std::map<std::string, std::deque<float>> depth_buffer;
 
@@ -91,15 +97,12 @@ bool Is_target(std::string _name)
 void 
 cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros_msgs::BoundingBoxesConstPtr& input_detection)
 {
-  //ROS_INFO("cloud callback");
+  ROS_INFO("cloud callback");
 
   // Initialize containers for clouds
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud                  (new pcl::PointCloud<pcl::PointXYZRGB>);
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_bottle           (new pcl::PointCloud<pcl::PointXYZRGB>);
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_cup      (new pcl::PointCloud<pcl::PointXYZRGB>);
-
-  // Handle orientation
-  //std::vector<std::string> handle_orientation;
 
   // Initialize container for object poses
   geometry_msgs::PoseArray bottle_poses,cup_poses;
@@ -126,7 +129,9 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
   centroid_bottle_list.scale.z = centroid_cup_list.scale.z = 0.05;
 
   // Initialize message with handle detections
-  pointcloud_processing_msgs::handle_position handle_list;
+  pointcloud_processing_msgs::handle_position bottle_list;
+
+  pointcloud_processing_msgs::ObjectInfoArray objectsarray;
 
   // Initialize container for auxiliary clouds
   pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_filtered_roi            (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -159,15 +164,6 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
     if(probability<0.6)
         return;
 
-    // ---------------Determine handle orientation--------------------
-    //if (object_name=="bottle"){
-      //if ((xmax-xmin)>=(ymax-ymin)){
-        //handle_orientation.push_back("horizontal");
-      //}
-      //else{
-        //handle_orientation.push_back("vertical");
-      //}
-    //}
 
     // -------------------ROI extraction------------------------------
 
@@ -201,12 +197,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
     sor_voxelgrid.setLeafSize (0.01, 0.01, 0.01); //size of the grid
     sor_voxelgrid.filter (*cloud_filtered_voxelgrid);
 
-   // Exception
-   if (cloud_filtered_voxelgrid->points.size() < 3){
-     if (object_name=="bottle"){handle_orientation.pop_back();}
-   break;
-   }
-   */
+     */
 
    // ---------------------StatisticalOutlierRemoval--------------------
 
@@ -413,7 +404,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
   object_pose.pose.position.z = centroid_abs.point.z;
   
 
-  ObjInfo cur_obj;
+  pointcloud_processing_msgs::ObjectInfo cur_obj;
   cur_obj.x = xmin;
   cur_obj.y = ymin;
   cur_obj.width = xmax-xmin;
@@ -422,8 +413,14 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
   cur_obj.last_time = ros::Time::now();
   cur_obj.average_depth=avg_depth;
   cur_obj.no_observation=false;
-  cur_obj.center = centroid_abs;
-
+  cur_obj.center = centroid_abs.point;
+  cur_obj.depth_change = false;
+  cur_obj.occ_objects = false;
+  if(Is_target(object_name))
+      cur_obj.is_target=true;
+  else
+      cur_obj.is_target=false;
+      
   /*
   // Project normal vector in the floor plane
   normal_vector_abs.vector.z = 0.0;
@@ -470,7 +467,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
   if (object_name == "bottle"){
     *cloud_bottle += *cloud_filtered_outplane;
     centroid_bottle_list.points.push_back(centroid_abs.point);
-    handle_list.position.push_back(centroid_abs);
+    bottle_list.position.push_back(centroid_abs);
     bottle_poses.poses.push_back(object_pose.pose);
 
   }
@@ -509,7 +506,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
    ros::Time current_time = ros::Time::now();
 
    ROS_INFO("----current label & id to position---" );
-   std::map<std::string, ObjInfo >::iterator mapiter
+   std::map<std::string, pointcloud_processing_msgs::ObjectInfo>::iterator mapiter
                                             =labels_to_obj.begin(); 
    for(mapiter; mapiter != labels_to_obj.end(); mapiter++)
    {
@@ -523,6 +520,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
         float dur = (current_time-obj_time).toSec();
         ROS_INFO("current duration for object %s :: %.3lf",mapiter->first.c_str(), dur );
 
+        //In the case that time duration from the last observation of target exceed threhosld
         if(dur>TEMP_OCC_TIME && Is_target(mapiter->first))
         {
             ROS_INFO("target class %s is not detected!!! should check the depthime",  mapiter->first.c_str() );
@@ -534,7 +532,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
             for (int column(mapiter->second.x); column<= mapiter->second.x+mapiter->second.width; column++){
                 for (int row(mapiter->second.y); row<=mapiter->second.y+mapiter->second.height; row++){
                     // Pixel coordinates to pointcloud index
-                    indices_new.push_back(row*mapiter->second.width+column);
+                    indices_new.push_back(row*width+column);
                 }
             }
 
@@ -553,7 +551,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
             // Remove noise
             sor_noise.setInputCloud (cloud_filtered_roi);
             //sor_noise.setInputCloud (cloud_filtered_voxelgrid);
-            sor_noise.setMeanK (50);
+            sor_noise.setMeanK (30);
             sor_noise.setStddevMulThresh (1.0);
             sor_noise.filter (*cloud_filtered_sor);
 
@@ -563,6 +561,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
             pcl::removeNaNFromPointCloud(*cloud_filtered_sor,*nanfiltered_cloud, rindices);
 
             float avg_depth =0;
+            float new_avg_depth =0;
             float nearest=0.0;
             //depth_maxcount=0.0;
             int depth_count =nanfiltered_cloud->points.size();
@@ -570,26 +569,114 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
             {
                 //std::cout<<"inside clouds"<<nanfiltered_cloud->points[i].z<<std::endl;
                 float cur_depths = nanfiltered_cloud->points[i].z;
-                avg_depth+=nanfiltered_cloud->points[i].z;
+                new_avg_depth+=nanfiltered_cloud->points[i].z;
                 nearest =roundf(cur_depths*1000) /1000.0;
             }
 
-            avg_depth =avg_depth/depth_count;
-            ROS_INFO("object: %s, before depth : %.3lf,  new_depth : %.3lf",mapiter->first.c_str(),  mapiter->second.average_depth, avg_depth);
-            //--------------------------------------------------------------------------------------
+            if(depth_count>0)
+                new_avg_depth =new_avg_depth/depth_count;
+            else
+                continue;
 
+
+            //getbuffer value
+            //
+            //
+            //
+            auto it_depthvector = depth_buffer.find(mapiter->first);
+            if(it_depthvector !=depth_buffer.end() )
+            {
+                if(it_depthvector->second.size()>0)
+                {
+                    float avg_buffer=0.0;
+                    int   avg_count=0;
+                    avg_depth =0.0;
+                    for(size_t j(0);j<it_depthvector->second.size();j++)
+                    {
+                        if(std::isnan(it_depthvector->second[j]) && (it_depthvector->second[j]!=0.0))
+                        {
+                            avg_buffer+=it_depthvector->second[j];
+                            avg_count++;
+                        }
+                    }
+                    if(avg_count>0)
+                        avg_buffer = avg_buffer/avg_count;
+                    else
+                    {
+                        avg_buffer = it_depthvector->second[0];
+                        ROS_INFO("%s depath is nan, so, put into deque value: %.3f",mapiter->first.c_str(), avg_buffer);
+                    
+                    }
+
+                    avg_depth= avg_buffer ;
+                    //avg_depth =(it_depthvector->second[it_depthvector->second.size()-10]);
+                    ROS_INFO("%s average depth value from buffer is: %.3f",mapiter->first.c_str(), avg_buffer);
+
+                }
+                else
+                {
+                    avg_depth = -1.0;
+                    ROS_INFO("%s depath is nan, so, put into Zero----last case: %.3f",mapiter->first.c_str(), avg_depth);
+                }
+            }
+
+            //
+
+            ROS_INFO("object: %s, before depth : %.3lf,  new_depth : %.3lf",mapiter->first.c_str(),  avg_depth, new_avg_depth);
+            float depth_diff= avg_depth - new_avg_depth;
+            bool Depth_change = false;
+            if(depth_diff>0.1)
+            {
+                Depth_change =true;
+                mapiter->second.depth_change = true;
+                
+            
+            }
+            //--------------------------------------------------------------------------------------
             
             //calculate overlapratio among detected boundboxes
+            //
+            bool Occ_object = false;
+
+            auto mapiter2=labels_to_obj.begin(); 
+            for(mapiter2; mapiter2 != labels_to_obj.end(); mapiter2++)
+            {
+
+                if(mapiter->first.compare(mapiter2->first)!=0)
+                {
+                    int left = mapiter->second.x;
+                    int right = mapiter->second.x+mapiter->second.width;
+                    int tops = mapiter->second.y;
+                    int bottom= mapiter->second.y+mapiter->second.height;
+                    float original_area = (float)(right-left)*(bottom-tops);
+
+                    //calculate bounding box from non detected ratio
+                    if(mapiter2->second.x>left) 
+                        left = mapiter2->second.x;
 
 
+                    if(mapiter2->second.x+mapiter2->second.width <right) 
+                        right = mapiter2->second.x+mapiter2->second.width;
+
+                    if(mapiter2->second.y>tops) 
+                        tops= mapiter2->second.y;
+
+                    if(mapiter2->second.y+mapiter2->second.height <bottom) 
+                        bottom = mapiter2->second.y+mapiter2->second.height;
+
+                    float new_area = (right-left)*(bottom-tops);
+
+                    float overlapratio = (new_area)/(original_area);
+                    if(overlapratio>OVERLAP_THRESHOLD)
+                    {
+                        ROS_INFO("object %s is overlapped by object %s by %.3lf !!", mapiter->first.c_str(), mapiter2->first.c_str(), overlapratio );
+                        Occ_object =true;
+                        mapiter->second.occ_objects = true;
+                    }
+
+                }
+            }
         }
-
-
-
-
-
-
-
 
         if(dur>SURVIVAL_TIME)
         {
@@ -598,9 +685,11 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
         }
 
 
-
-
+        objectsarray.objectinfos.push_back(mapiter->second);
     }
+
+   //publish_objectinfos
+   pub_ObjectInfos.publish(objectsarray);
 
 
   // Create a container for the result data.
@@ -624,7 +713,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
   pub_cup_centroid.publish (centroid_cup_list);
 
   // Publish handle position
-  pub_handle_centroid_list.publish (handle_list);
+  pub_bottle_list.publish (bottle_list);
 
   // Publish poses
   pub_bottle_poses.publish(bottle_poses);
@@ -648,10 +737,9 @@ main (int argc, char** argv)
   depth_buffer.insert({"bottle", depthvector});
   depth_buffer.insert({"cup", depthvector});
 
-
   // Initialize subscribers to darknet detection and pointcloud
-  //message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud(nh, "hsrb/head_rgbd_sensor/depth_registered/rectified_points", 1);
-  message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud(nh, "camera/depth_registered/points", 1);
+  message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud(nh, "hsrb/head_rgbd_sensor/depth_registered/rectified_points", 1);
+  //message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud(nh, "camera/depth_registered/points", 1);
   message_filters::Subscriber<darknet_ros_msgs::BoundingBoxes> sub_box(nh, "darknet_ros/bounding_boxes", 1);
 
   // Initialize transform listener
@@ -676,8 +764,10 @@ main (int argc, char** argv)
   pub_bottle_poses = nh.advertise<geometry_msgs::PoseArray> ("/bottle_poses", 1);
   pub_cup_poses = nh.advertise<geometry_msgs::PoseArray> ("/cup_poses", 1);
 
-  // Create a ROS publisher for handle position
-  pub_handle_centroid_list = nh.advertise<pointcloud_processing_msgs::handle_position> ("detected_bottle", 1);
+  // Create a ROS publisher for bottle position
+  pub_bottle_list = nh.advertise<pointcloud_processing_msgs::handle_position> ("detected_bottle", 1);
+
+  pub_ObjectInfos = nh.advertise<pointcloud_processing_msgs::ObjectInfoArray> ("ObjectInfos", 1);
 
   // Spin
   ros::spin ();

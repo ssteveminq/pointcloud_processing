@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(pointcloud_processing)
 
+add_compile_options(-std=c++11)
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
 
@@ -145,6 +146,7 @@ add_executable(planar_segmentation src/planar_segmentation.cpp)
 add_executable(roi_extractor src/roi_extractor.cpp)
 add_executable(noise_removal src/noise_removal.cpp)
 add_executable(pointcloud_processing src/pointcloud_processing.cpp)
+add_executable(pcl_processing src/pcl_processing.cpp)
 add_executable(pointcloud_processing_result src/pointcloud_processing_result.cpp)
 
 ## Rename C++ executable without prefix
@@ -166,6 +168,7 @@ target_link_libraries(planar_segmentation ${catkin_LIBRARIES})
 target_link_libraries(roi_extractor ${catkin_LIBRARIES})
 target_link_libraries(noise_removal ${catkin_LIBRARIES})
 target_link_libraries(pointcloud_processing ${catkin_LIBRARIES})
+target_link_libraries(pcl_processing ${catkin_LIBRARIES})
 target_link_libraries(pointcloud_processing_result ${catkin_LIBRARIES})
 
 

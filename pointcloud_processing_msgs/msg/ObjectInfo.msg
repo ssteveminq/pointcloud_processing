@@ -1,5 +1,6 @@
 std_msgs/Header header
 string label
+string occ_label
 uint32 id
 geometry_msgs/Point center
 float32 x

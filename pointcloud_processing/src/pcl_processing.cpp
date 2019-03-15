@@ -659,17 +659,17 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
             seg.setDistanceThreshold (0.02);
 
             // Segment the largest planar component from the remaining cloud
-            seg.setInputCloud (cloud_filtered_sor);
-            seg.segment (*inliers_plane, *coefficients);
+            //seg.setInputCloud (cloud_filtered_sor);
+            //seg.segment (*inliers_plane, *coefficients);
 
             // Create the filtering object
-            pcl::ExtractIndices<pcl::PointXYZRGB> extract_plane;
+            //pcl::ExtractIndices<pcl::PointXYZRGB> extract_plane;
 
             // Extract the inliers
-            extract_plane.setInputCloud (cloud_filtered_sor);
-            extract_plane.setIndices (inliers_plane);
-            extract_plane.setNegative (false);
-            extract_plane.filter (*cloud_filtered_inplane);
+            //extract_plane.setInputCloud (cloud_filtered_sor);
+            //extract_plane.setIndices (inliers_plane);
+            //extract_plane.setNegative (false);
+            //extract_plane.filter (*cloud_filtered_inplane);
             
             geometry_msgs::PointStamped centroid_occp;
             centroid_occp.header.frame_id = input_cloud->header.frame_id;
@@ -681,8 +681,8 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
             pub_occluder_point.publish(centroid_occp);
             //
             //*cloud_occluder+= *cloud_filtered_roi;
-            //*cloud_occluder+= *cloud_filtered_sor;
-            *cloud_occluder+= *cloud_filtered_inplane;
+            *cloud_occluder+= *cloud_filtered_sor;
+            //*cloud_occluder+= *cloud_filtered_inplane;
 
             float avg_depth =0;
             float new_avg_depth =0;
@@ -824,17 +824,20 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
             }
         }
 
+
+       if(Is_target(mapiter->first))
+           objectsarray.objectinfos.push_back(mapiter->second);
+
         if(dur>SURVIVAL_TIME)
         {
             if(!Is_target(mapiter->first))
             {
-                labels_to_obj.erase(mapiter->first);
+
                 ROS_INFO("class %s is erased!!! --out of time",  mapiter->first.c_str() );
+                labels_to_obj.erase(mapiter->first);
             }
         }
 
-       if(Is_target(mapiter->first))
-           objectsarray.objectinfos.push_back(mapiter->second);
 
     }
 

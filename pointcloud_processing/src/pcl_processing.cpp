@@ -422,8 +422,8 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
   // Transform centroid to fixed reference frame
   lst->waitForTransform(fixed_frame, input_cloud->header.frame_id, ros::Time::now(), ros::Duration(4.0));
   lst->transformPoint(fixed_frame,centroid_rel, centroid_abs);
-  //try{lst->transformPoint(fixed_frame,centroid_rel, centroid_abs);}
-  //catch (tf::TransformException& ex) {}
+  try{lst->transformPoint(fixed_frame,centroid_rel, centroid_abs);}
+  catch (tf::TransformException& ex) {}
 
 
   // ---------------Create detected object reference frame-------------
@@ -497,6 +497,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
   // ---------------Store resultant cloud and centroid------------------
   
   if (object_name == "bottle"){
+      //ROS_INFO("Hello_bottle");
       pub_bottle_point.publish(centroid_abs);
     *cloud_bottle += *cloud_filtered_sor;
     //*cloud_bottle += *cloud_filtered_inplane;
@@ -844,7 +845,6 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
     }
 
    //check both target is detected
-
    pub_ObjectInfos.publish(objectsarray);
 
     //objectsarray.objectinfos.push_back(mapiter->second);
@@ -872,7 +872,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
   pub_bottle.publish (output_bottle);
   pub_cup.publish (output_cup);
   //if(is_occluder)
-  pub_occluder.publish(output_occluder);
+  //pub_occluder.publish(output_occluder);
 
   // Publish markers
   //pub_bottle_centroid.publish (centroid_bottle_list);
@@ -904,25 +904,19 @@ main (int argc, char** argv)
   depth_buffer.insert({"cup", depthvector});
 
   // Initialize subscribers to darknet detection and pointcloud
-  message_filters::Subscriber<darknet_ros_msgs::BoundingBoxes> sub_box(nh, "/darknet_ros/bounding_boxes", 1);
   message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud(nh, "/hsrb/head_rgbd_sensor/depth_registered/rectified_points", 1);
+  message_filters::Subscriber<darknet_ros_msgs::BoundingBoxes> sub_box(nh, "/darknet_ros/bounding_boxes", 1);
   //message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud(nh, "camera/depth_registered/points", 1);
 
   // Initialize transform listener
-  tf::TransformListener listener(ros::Duration(5));
+  tf::TransformListener listener(ros::Duration(10));
   lst = &listener;
 
   // Synchronize darknet detection with pointcloud
   typedef sync_policies::ApproximateTime<sensor_msgs::PointCloud2, darknet_ros_msgs::BoundingBoxes> MySyncPolicy;
   // ApproximateTime takes a queue size as its constructor argument, hence MySyncPolicy(10)
-  Synchronizer<MySyncPolicy> sync(MySyncPolicy(20), sub_cloud, sub_box);
+  Synchronizer<MySyncPolicy> sync(MySyncPolicy(10), sub_cloud, sub_box);
   sync.registerCallback(boost::bind(&cloud_cb, _1, _2));
-
-  ROS_INFO("Started. Waiting for inputs.");
-    while (ros::ok() && !received_first_message) {
-        ROS_WARN_THROTTLE(2, "Waiting for image, depth and detections messages...");
-        ros::spinOnce();
-    }
 
   // Create a ROS publisher for the output point cloud
   pub_bottle = nh.advertise<sensor_msgs::PointCloud2> ("pcl_bottle", 1);
@@ -945,6 +939,12 @@ main (int argc, char** argv)
   // Create a ROS publisher for bottle position
   pub_bottle_list = nh.advertise<pointcloud_processing_msgs::handle_position> ("detected_bottle", 1);
   pub_ObjectInfos = nh.advertise<pointcloud_processing_msgs::ObjectInfoArray> ("ObjectInfos", 1);
+
+  ROS_INFO("Started. Waiting for inputs.");
+    while (ros::ok() && !received_first_message) {
+        ROS_WARN_THROTTLE(2, "Waiting for image, depth and detections messages...");
+        ros::spinOnce();
+    }
 
 
 

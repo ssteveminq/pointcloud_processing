@@ -39,9 +39,9 @@ using namespace message_filters;
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/common/centroid.h>
 
-const float SURVIVAL_TIME = 25.0;
-const float TEMP_OCC_TIME = 1.0;
-const float OVERLAP_THRESHOLD=0.65;
+const float SURVIVAL_TIME = 125.0;
+const float TEMP_OCC_TIME = 1.5;
+const float OVERLAP_THRESHOLD=0.6;
 const int QUEUE_SIZE = 10;
 
 //struct ObjInfo{
@@ -546,7 +546,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
 
   }
 
-  if(is_bottle && is_cup)
+  if(is_bottle && is_cup && (target_string.size()>2))
   {
       for(size_t j(0);j<target_string.size();j++)
       {
@@ -755,7 +755,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
             //
             float depth_diff= avg_depth - new_avg_depth;
             bool Depth_change = false;
-            if(depth_diff>0.1)
+            if(depth_diff>0.09)
             {
 
                 ROS_INFO("object: %s, before depth : %.3lf,  new_depth : %.3lf",mapiter->first.c_str(),  avg_depth, new_avg_depth);
@@ -803,7 +803,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
                     {
                         current_time = ros::Time::now();
                         float time_diff = (current_time-mapiter2->second.last_time).toSec();
-                        if(time_diff<0.3)
+                        if(time_diff<0.4)
                         {
 
                             ROS_INFO("object %s is overlapped by object %s by %.3lf !!", mapiter->first.c_str(), mapiter2->first.c_str(), overlapratio);
@@ -837,7 +837,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
             {
 
                 ROS_INFO("class %s is erased!!! --out of time",  mapiter->first.c_str() );
-                labels_to_obj.erase(mapiter->first);
+                //labels_to_obj.erase(mapiter->first);
             }
         }
 

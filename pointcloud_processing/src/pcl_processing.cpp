@@ -225,7 +225,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
    pcl::PassThrough<pcl::PointXYZRGB> pass;
    pass.setInputCloud(cloud_filtered_sor);
    pass.setFilterFieldName("z");
-   pass.setFilterLimits(0.0,2.0);
+   pass.setFilterLimits(0.0,3.0);
    pass.filter(*indices_xyz);
 
 

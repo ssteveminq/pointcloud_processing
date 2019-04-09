@@ -225,7 +225,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
    pcl::PassThrough<pcl::PointXYZRGB> pass;
    pass.setInputCloud(cloud_filtered_sor);
    pass.setFilterFieldName("z");
-   pass.setFilterLimits(0.0,1.3);
+   pass.setFilterLimits(0.0,2.0);
    pass.filter(*indices_xyz);
 
 
@@ -507,7 +507,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
     //*cloud_bottle += *cloud_filtered_inplane;
     //centroid_bottle_list.points.push_back(centroid_abs.point);
     //bottle_list.position.push_back(centroid_abs);
-    //bottle_poses.poses.push_back(object_pose.pose);
+    bottle_poses.poses.push_back(object_pose.pose);
 
   }
   else if (object_name == "cup"){
@@ -594,7 +594,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
         //In the case that time duration from the last observation of target exceed threhosld
         if(dur>TEMP_OCC_TIME && Is_target(mapiter->first))
         {
-            ROS_INFO("target class %s is not detected!!! should check the depthime",  mapiter->first.c_str() );
+            ROS_INFO("target class %s is not detected!!! should check the depth",  mapiter->first.c_str() );
             //calucate depth from last detected bounding box
             //----------------------------------------------------------------------------------
             pcl::PointIndices::Ptr inliers_roi_new (new pcl::PointIndices ());
@@ -882,7 +882,7 @@ cloud_cb (const sensor_msgs::PointCloud2ConstPtr& input_cloud, const darknet_ros
   //pub_bottle_list.publish (bottle_list);
 
   // Publish poses
-  //pub_bottle_poses.publish(bottle_poses);
+  pub_bottle_poses.publish(bottle_poses);
   //pub_cup_poses.publish(cup_poses);
 
   //ROS_INFO("Pointcloud processed");
